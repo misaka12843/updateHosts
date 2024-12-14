@@ -1,175 +1,163 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*- 
 
-#############################
-# name:updateHosts
-# author:https://github.com/ladder1984
-# version:1.3.4
-# license:MIT
-############################
+############################# 
+# name:updateHosts 
+# author:https://github.com/ladder1984 
+# version:1.3.4 
+# license:MIT 
+############################ 
 
-import urllib2
+import urllib.request
 import platform
 import datetime
 import time
 import re
 import os
 import shutil
-import ConfigParser
+import configparser
 import sys
 import socket
+import logging
 
-config_path = 'config.ini'
-# default setting
+# 设置日志记录
+logging.basicConfig(filename='errorLog.txt', level=logging.ERROR,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+config_path = 'config.ini' 
+# default setting 
 hosts_folder = ""
 hosts_location = hosts_folder + "hosts"
 
-source_list = ['https://raw.githubusercontent.com/vokins/simpleu/master/hosts']
+source_list = ['https://raw.hellogithub.com/hosts']
 not_block_sites = 0
 always_on = 0
-# default setting
-
-errorLog = open('errorLog.txt', 'a')
-
+# default setting 
 
 def get_cur_info():
-    return (sys._getframe().f_back.f_code.co_name)
-
+    return sys._getframe().f_back.f_code.co_name
 
 def exit_this():
-    errorLog.close()
     sys.exit()
-
 
 def check_connection():
     sleep_seconds = 1200
-    i = 0
     for i in range(sleep_seconds):
         try:
             socket.gethostbyname("www.baidu.com")
             break
         except socket.gaierror:
             time.sleep(1)
-    if i == sleep_seconds - 1:
+    else:
+        logging.error(f'{get_cur_info()} - Unable to connect to the internet after {sleep_seconds} seconds.')
         exit_this()
 
+def check_system_and_config():
+    global hosts_folder, hosts_location, source_list, not_block_sites, always_on
 
-def check_system():
-    global hosts_folder
-    global hosts_location
+    # 检查系统并设置hosts文件路径
     if platform.system() == 'Windows':
         hosts_folder = os.environ['SYSTEMROOT'] + "\\System32\\drivers\\etc\\"
-    elif platform.system() == 'Linux' or platform.system() == 'Darwin':
+    elif platform.system() in ['Linux', 'Darwin']:  # Linux 或 macOS
         hosts_folder = "/etc/"
     else:
+        logging.error(f'{get_cur_info()} - Unsupported operating system: {platform.system()}')
         exit_this()
+
     hosts_location = hosts_folder + "hosts"
 
-
-def get_config():
-    global source_list
-    global not_block_sites
-    global always_on
-    if os.path.exists('config.ini'):
+    # 读取配置文件
+    if os.path.exists(config_path):
         try:
             # 清除Windows记事本自动添加的BOM
-            with open(config_path, 'r+') as f:
+            with open(config_path, 'r+', encoding='utf-8') as f:
                 content = f.read()
-                content = re.sub(r"\xfe\xff", "", content)
+                content = re.sub(r"\xfe\xff", "", content)  # 删除 BOM
                 content = re.sub(r"\xff\xfe", "", content)
                 content = re.sub(r"\xef\xbb\xbf", "", content)
                 f.seek(0)
                 f.write(content)
 
-            config = ConfigParser.ConfigParser()
-            config.read('config.ini')
+            config = configparser.ConfigParser()
+            config.read(config_path)
             source_id = config.get('source_select', 'source_id')
             source_list = source_id.split(",")
             for i in range(len(source_list)):
-                source_list[i] = config.get('source_select', 'source' + str(i + 1))
+                source_list[i] = config.get('source_select', f'source{i + 1}')
 
             not_block_sites = config.get("function", "not_block_sites")
             always_on = config.get("function", "always_on")
-        except BaseException as e:
-            errorLog.write(
-                str(datetime.datetime.now()) + '\n' + 'function:' + get_cur_info() + '\nerror:' + str(e) + '\n\n')
+        except Exception as e:
+            logging.error(f'{get_cur_info()} - Error reading configuration: {e}')
             exit_this()
-
+    else:
+        logging.error(f'{get_cur_info()} - Configuration file not found: {config_path}')
+        exit_this()
 
 def backup_hosts():
     try:
-        if (not os.path.isfile(hosts_folder + 'backup_hosts_original_by_updateHosts')) and \
+        if not os.path.isfile(hosts_folder + 'backup_hosts_original_by_updateHosts') and \
                 os.path.isfile(hosts_folder + 'hosts'):
             shutil.copy(hosts_folder + 'hosts', hosts_folder + 'backup_hosts_original_by_updateHosts')
         if os.path.isfile(hosts_folder + 'hosts'):
             shutil.copy(hosts_folder + 'hosts', hosts_folder + 'backup_hosts_last_by_updateHosts')
-    except BaseException as e:
-        errorLog.write(
-            str(datetime.datetime.now()) + '\n' + 'function:' + get_cur_info() + '\nerror:' + str(e) + '\n\n')
+    except Exception as e:
+        logging.error(f'{get_cur_info()} - Error backing up hosts file: {e}')
         exit_this()
-
 
 def download_hosts():
     try:
-        hosts_from_web = open("hosts_from_web", "a")
-        for x in source_list:
-            data = urllib2.urlopen(x)
-            hosts_from_web.write(data.read())
-    except BaseException as e:
-        errorLog.write(
-            str(datetime.datetime.now()) + '\n' + 'function:' + get_cur_info() + '\nerror:' + str(e) + '\n\n')
+        with open("hosts_from_web", "w", encoding='utf-8') as hosts_from_web:
+            for x in source_list:
+                response = urllib.request.urlopen(x)
+                hosts_from_web.write(response.read().decode('utf-8'))
+    except Exception as e:
+        logging.error(f'{get_cur_info()} - Error downloading hosts file: {e}')
         exit_this()
-
 
 def process_hosts():
     try:
-        hosts_content = open('hosts', 'w')
-        file_from_web = open('hosts_from_web')
-        hosts_from_web = file_from_web.read()
-        file_user_defined = open('hosts_user_defined.txt')
-        hosts_user_defined = file_user_defined.read()
-        hosts_content.write('#hosts_user_defined\n')
-        hosts_content.write(hosts_user_defined)
-        hosts_content.write('\n#hosts_user_defined\n')
-        hosts_content.write('\n\n#hosts_by_hostsUpdate\n\n')
-        if not_block_sites is "1":
-            hosts_from_web = re.sub("127.0.0.1", "#not_block_sites", hosts_from_web)
-        hosts_content.write(hosts_from_web)
-        hosts_content.write('\n#hosts_by_hostsUpdate')
-        hosts_content.close()
-        file_from_web.close()
-        file_user_defined.close()
-        os.remove('hosts_from_web')
-    except BaseException as e:
-        errorLog.write(
-            str(datetime.datetime.now()) + '\n' + 'function:' + get_cur_info() + '\nerror:' + str(e) + '\n\n')
-        exit_this()
+        with open('hosts', 'w', encoding='utf-8') as hosts_content:
+            with open('hosts_from_web', 'r', encoding='utf-8') as file_from_web:
+                hosts_from_web = file_from_web.read()
+            with open('hosts_user_defined.txt', 'r', encoding='utf-8') as file_user_defined:
+                hosts_user_defined = file_user_defined.read()
 
+            hosts_content.write('#hosts_user_defined\n')
+            hosts_content.write(hosts_user_defined)
+            hosts_content.write('\n#hosts_user_defined\n')
+            hosts_content.write('\n\n#hosts_by_hostsUpdate\n\n')
+
+            if not_block_sites == "1":
+                hosts_from_web = re.sub("127.0.0.1", "#not_block_sites", hosts_from_web)
+
+            hosts_content.write(hosts_from_web)
+            hosts_content.write('\n#hosts_by_hostsUpdate')
+
+        os.remove('hosts_from_web')
+    except Exception as e:
+        logging.error(f'{get_cur_info()} - Error processing hosts file: {e}')
+        exit_this()
 
 def move_hosts():
     try:
         shutil.move("hosts", hosts_location)
-    except BaseException as e:
-        errorLog.write(
-            str(datetime.datetime.now()) + '\n' + 'function:' + get_cur_info() + '\nerror:' + str(e) + '\n\n')
+    except Exception as e:
+        logging.error(f'{get_cur_info()} - Error moving hosts file: {e}')
         exit_this()
-
 
 def main():
     check_connection()
-    check_system()
-    get_config()
+    check_system_and_config()
     backup_hosts()
     download_hosts()
     process_hosts()
     move_hosts()
-    errorLog.close()
-
 
 if __name__ == '__main__':
     main()
 
 if always_on == "1":
-    while 1:
+    while True:
         time.sleep(3600)
         main()
