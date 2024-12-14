@@ -1,13 +1,6 @@
 #!/usr/bin/env python 
 # -*- coding: utf-8 -*- 
 
-############################# 
-# name:updateHosts 
-# author:https://github.com/ladder1984 
-# version:1.3.4 
-# license:MIT 
-############################ 
-
 import urllib.request
 import platform
 import datetime
